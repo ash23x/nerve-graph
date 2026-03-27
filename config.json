@@ -1,0 +1,9 @@
+{
+    "vault_path": ".",
+    "vault_name": "MyVault",
+    "output": "vault_data.js",
+    "skip_dirs": [".obsidian", ".git", "node_modules", ".trash", ".logseq"],
+    "root_exponent": 0.2,
+    "boost": 0.3,
+    "custom_domains": {}
+}

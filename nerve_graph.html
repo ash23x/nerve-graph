@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>nerve-graph</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%230d1117' stroke='%2358a6ff' stroke-width='2'/%3E%3Ccircle cx='11' cy='12' r='2' fill='%2300e5ff'/%3E%3Ccircle cx='20' cy='10' r='1.5' fill='%23ff9100'/%3E%3Ccircle cx='18' cy='19' r='1.8' fill='%2300e676'/%3E%3Cline x1='11' y1='12' x2='20' y2='10' stroke='%2358a6ff' stroke-width='.5' opacity='.6'/%3E%3Cline x1='20' y1='10' x2='18' y2='19' stroke='%2358a6ff' stroke-width='.5' opacity='.6'/%3E%3C/svg%3E">
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+<script src="vault_data.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
+#sidebar{width:300px;min-width:300px;background:#161b22;border-right:1px solid #30363d;display:flex;flex-direction:column;z-index:10}
+#sidebar h1{font-size:15px;padding:14px;border-bottom:1px solid #30363d;color:#58a6ff}
+#sidebar h1 span{color:#8b949e;font-weight:normal;font-size:11px;display:block;margin-top:2px}
+#search-box{padding:10px;border-bottom:1px solid #30363d}
+#search-input{width:100%;padding:7px 10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:13px;outline:none}
+#search-input:focus{border-color:#58a6ff}
+#search-results{max-height:140px;overflow-y:auto}
+.search-result{padding:5px 10px;cursor:pointer;font-size:12px;color:#8b949e}
+.search-result:hover{background:#21262d;color:#c9d1d9}
+#tab-bar{display:flex;border-bottom:1px solid #30363d}
+.tab{flex:1;padding:9px;text-align:center;font-size:12px;cursor:pointer;color:#8b949e;border-bottom:2px solid transparent}
+.tab.active{color:#58a6ff;border-bottom-color:#58a6ff}.tab:hover{color:#c9d1d9}
+.panel{display:none;flex:1;overflow-y:auto;padding:10px}.panel.active{display:block}
+.filter-item{display:flex;align-items:center;gap:8px;padding:5px 4px;cursor:pointer;border-radius:4px;font-size:12px}
+.filter-item:hover{background:#21262d}
+.filter-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.filter-count{color:#484f58;font-size:11px}
+.filter-item.disabled{opacity:0.3}
+.node-item{padding:5px 4px;font-size:12px;cursor:pointer;border-radius:4px;display:flex;justify-content:space-between}
+.node-item:hover{background:#21262d}
+.node-item .metric{color:#58a6ff;font-size:11px;font-family:monospace}
+.slider-row{padding:4px 0}
+.slider-row label{display:flex;justify-content:space-between;font-size:11px;color:#8b949e;margin-bottom:2px}
+.slider-row label .val{color:#58a6ff;font-family:monospace}
+.slider-row input[type=range]{width:100%;accent-color:#58a6ff;cursor:pointer}
+#stats{padding:10px;border-top:1px solid #30363d;font-size:11px;color:#484f58;line-height:1.6}
+#graph-area{flex:1;position:relative}
+#graph-container{width:100%;height:100%}
+#node-info{position:absolute;bottom:12px;left:12px;max-width:500px;background:#161b22ee;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:12px;display:none;z-index:5}
+#node-info h3{color:#58a6ff;font-size:13px;margin-bottom:3px}
+#node-info .meta{color:#8b949e}
+#controls{position:absolute;top:16px;right:16px;display:flex;flex-direction:column;gap:6px;z-index:10}
+#controls button{width:44px;height:44px;border:1px solid #30363d;background:#161b22dd;color:#c9d1d9;font-size:18px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+#controls button:hover{background:#21262d;border-color:#58a6ff;color:#58a6ff}
+#controls button:active{background:#58a6ff22;transform:scale(0.95)}
+#controls button.active-toggle{border-color:#58a6ff;background:#58a6ff22;color:#58a6ff}
+#legend{position:absolute;bottom:12px;right:12px;background:#161b22ee;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:11px;z-index:5;color:#8b949e;line-height:1.8}
+#legend b{color:#58a6ff}
+#ego-badge{position:absolute;top:16px;left:316px;background:#f8514988;border:1px solid #f85149;border-radius:6px;padding:6px 12px;font-size:12px;color:#f85149;display:none;z-index:10}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#161b22}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h1>nerve-graph <span id="node-count"></span></h1>
+  <div id="search-box">
+    <input type="text" id="search-input" placeholder="Search notes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="tab-bar">
+    <div class="tab active" data-tab="filters">Domains</div>
+    <div class="tab" data-tab="hubs">Hubs</div>
+    <div class="tab" data-tab="orphans">Orphans</div>
+    <div class="tab" data-tab="forces">Forces</div>
+  </div>
+  <div class="panel active" id="panel-filters"></div>
+  <div class="panel" id="panel-hubs"></div>
+  <div class="panel" id="panel-orphans"></div>
+  <div class="panel" id="panel-forces">
+    <div class="slider-row"><label>Repulsion <span class="val" id="v-repel">-40</span></label>
+      <input type="range" id="s-repel" min="-200" max="0" value="-40" step="5"></div>
+    <div class="slider-row"><label>Link Distance <span class="val" id="v-linkd">30</span></label>
+      <input type="range" id="s-linkd" min="5" max="150" value="30" step="5"></div>
+    <div class="slider-row"><label>Link Strength <span class="val" id="v-links">0.30</span></label>
+      <input type="range" id="s-links" min="1" max="100" value="30" step="1"></div>
+    <div class="slider-row"><label>Centre Gravity <span class="val" id="v-center">0.10</span></label>
+      <input type="range" id="s-center" min="0" max="100" value="10" step="1"></div>
+    <div class="slider-row"><label>Cluster Pull <span class="val" id="v-attract">0.03</span></label>
+      <input type="range" id="s-attract" min="0" max="100" value="3" step="1"></div>
+    <div class="slider-row"><label>Pulse Gain <span class="val" id="v-gain">0.30</span></label>
+      <input type="range" id="s-gain" min="0" max="100" value="30" step="1"></div>
+    <div class="slider-row"><label>Pulse Speed <span class="val" id="v-speed">1.0x</span></label>
+      <input type="range" id="s-speed" min="10" max="300" value="100" step="5"></div>
+    <div style="padding:8px 0 2px"><button id="btn-reheat" style="width:100%;padding:8px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#58a6ff;font-size:12px;cursor:pointer">&#8635; Reheat Simulation</button></div>
+  </div>
+  <div id="stats"></div>
+</div>
+<div id="graph-area">
+  <div id="graph-container"></div>
+  <div id="controls">
+    <button id="zoom-in" title="Zoom In">+</button>
+    <button id="zoom-out" title="Zoom Out">&minus;</button>
+    <button id="zoom-reset" title="Reset View">&#8634;</button>
+    <button id="btn-dag" title="Toggle DAG Layout">&#9776;</button>
+    <button id="btn-heatmap" title="Toggle Recency Heatmap">&#9832;</button>
+    <button id="btn-shells" title="Toggle Cluster Shells">&#9673;</button>
+    <button id="btn-screenshot" title="Screenshot">&#9744;</button>
+  </div>
+  <div id="ego-badge">EGO MODE &mdash; double-click to exit</div>
+  <div id="node-info"><h3 id="info-name"></h3><div class="meta" id="info-meta"></div></div>
+  <div id="legend">
+    <b>Visual Channels</b><br>
+    &#9679; Size = connection count<br>
+    &#10047; Pulse = bridge importance<br>
+    &#8594; Particle speed = recency (hover)<br>
+    &#8596; Particle density = mutual link (hover)<br>
+    &#9632; Particle colour = target domain (hover)<br>
+    &#9211; Curved = bidirectional link<br>
+    <b>Keys:</b> 1-9 = jump to hub | dbl-click = ego
+  </div>
+</div>
+<script>
+// ═══════════════════════════════════════════
+// nerve-graph v1.0 — 3D Knowledge Topology
+// https://github.com/ash23x/nerve-graph
+// ═══════════════════════════════════════════
+
+// ── DOMAIN MAP (auto-generated from build script) ──
+var ICONS = ['\u25CC','\u25C8','\u25C6','\u25C7','\u25C9','\u25CE','\u2665','\u2291','\u229E','\u2726','\u25B2','\u221E','\u2666','\u2298','\u25A3','\u25CF'];
+var DOMAIN_MAP = {};
+var di = 0;
+Object.keys(DOMAIN_MAP_DATA || {}).forEach(function(c) {
+  var d = DOMAIN_MAP_DATA[c];
+  DOMAIN_MAP[c] = { label: d.label, shape: d.shape, icon: ICONS[di % ICONS.length] };
+  di++;
+});
+// Fallback for nodes with colours not in the map
+if (!DOMAIN_MAP['#888888']) DOMAIN_MAP['#888888'] = {label:'General',icon:'\u25CC',shape:'icosahedron'};
+
+// ── GLOBAL STATE ──
+var ATTRACTORS = (function() {
+  var colors = Object.keys(DOMAIN_MAP); var map = {};
+  var ga = Math.PI * (3 - Math.sqrt(5));
+  colors.forEach(function(c, i) {
+    var y = 1 - (i / Math.max(colors.length - 1, 1)) * 2;
+    var radius = Math.sqrt(1 - y*y);
+    var theta = ga * i; var r = 200;
+    map[c] = { x: Math.cos(theta)*radius*r, y: y*r, z: Math.sin(theta)*radius*r };
+  });
+  return map;
+})();
+var attractorStrength = 0.03;
+var pulseGain = 0.30, pulseSpeed = 1.0;
+var hoverNode = null, highlightNodes = {};
+var egoNode = null, heatmapMode = false, dagMode = null, shellsVisible = false;
+var activeColors = {};
+Object.keys(DOMAIN_MAP).forEach(function(c){ activeColors[c] = true; });
+function isActive(c) { return activeColors[c] === true; }
+
+// ── COUNTER ──
+document.getElementById('node-count').textContent = VAULT_NODES.length + ' nodes \u00b7 ' + VAULT_EDGES.length + ' edges';
+
+// ── DATA PARSING ──
+var graphNodes = VAULT_NODES.map(function(n) {
+  return { id:n.id, color:n.color, shape:n.shape, degree:n.degree, betweenness:n.betweenness,
+    recency:n.recency, val:Math.max(0.8, Math.sqrt(n.degree)*1.5), __mesh:null, __halo:null };
+});
+var nodeMap = {}; graphNodes.forEach(function(n){ nodeMap[n.id]=n; });
+var idSet = {}; graphNodes.forEach(function(n){ idSet[n.id]=true; });
+var adj = {}, adj2 = {};
+graphNodes.forEach(function(n){ adj[n.id]=[]; adj2[n.id]=new Set(); });
+VAULT_EDGES.forEach(function(e){ if(adj[e.from]) adj[e.from].push(e.to); if(adj[e.to]) adj[e.to].push(e.from); });
+Object.keys(adj).forEach(function(id){ adj[id].forEach(function(n1){ adj2[id].add(n1); (adj[n1]||[]).forEach(function(n2){ adj2[id].add(n2); }); }); });
+var graphLinks = VAULT_EDGES.filter(function(e){ return idSet[e.from]&&idSet[e.to]; })
+  .map(function(e){ return {source:e.from,target:e.to,bidir:e.bidir,tColor:e.tColor,tRec:e.tRec,eRec:e.eRec||0}; });
+
+// ── GEOMETRY ──
+var el = document.getElementById('graph-container');
+function makeGeo(shape,size) {
+  var s=size*0.8;
+  switch(shape) {
+    case 'cube': return new THREE.BoxGeometry(s,s,s);
+    case 'octahedron': return new THREE.OctahedronGeometry(s*0.7);
+    case 'dodecahedron': return new THREE.DodecahedronGeometry(s*0.7);
+    case 'icosahedron': return new THREE.IcosahedronGeometry(s*0.7);
+    case 'torus': return new THREE.TorusGeometry(s*0.5,s*0.2,8,16);
+    case 'tetrahedron': return new THREE.TetrahedronGeometry(s*0.8);
+    case 'torusknot': return new THREE.TorusKnotGeometry(s*0.4,s*0.15,32,8);
+    case 'cone': return new THREE.ConeGeometry(s*0.5,s,8);
+    default: return new THREE.SphereGeometry(s*0.6,12,8);
+  }
+}
+function recencyColor(r) { return 'rgb('+Math.round(255*r)+',30,'+Math.round(255*(1-r))+')'; }
+
+// ── GRAPH ──
+var Graph = ForceGraph3D({extraRenderers:[],rendererConfig:{antialias:true,alpha:true}})(el)
+  .graphData({nodes:graphNodes,links:graphLinks})
+  .backgroundColor('#0d1117').showNavInfo(false)
+  .nodeVal(function(n){
+    if(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id)) return 0.01;
+    return isActive(n.color)?n.val:0.01;
+  })
+  .nodeThreeObject(function(n) {
+    var d=DOMAIN_MAP[n.color]||{shape:'sphere'}; var size=Math.max(2,Math.sqrt(n.degree)*1.5);
+    var nc=heatmapMode?recencyColor(n.recency):n.color;
+    var dimmed=(!isActive(n.color))||(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id));
+    if(dimmed) nc='#111111'; else if(hoverNode&&n!==hoverNode&&!highlightNodes[n.id]) nc='#282828';
+    var mat=new THREE.MeshStandardMaterial({color:nc,emissive:new THREE.Color(nc),emissiveIntensity:0,
+      metalness:0.1,roughness:0.7,transparent:true,opacity:dimmed?0.06:0.92});
+    var group=new THREE.Group(); var mesh=new THREE.Mesh(makeGeo(n.shape||d.shape,size),mat);
+    group.add(mesh); n.__mesh=mesh;
+    if(n.betweenness>0.05){
+      var cv=document.createElement('canvas');cv.width=64;cv.height=64;var ctx=cv.getContext('2d');
+      var gr=ctx.createRadialGradient(32,32,0,32,32,32);
+      gr.addColorStop(0,nc);gr.addColorStop(0.4,nc+'88');gr.addColorStop(1,'transparent');
+      ctx.fillStyle=gr;ctx.fillRect(0,0,64,64);
+      var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,opacity:0.25,depthWrite:false}));
+      sp.scale.set(size*2*(0.5+n.betweenness),size*2*(0.5+n.betweenness),1);
+      group.add(sp);n.__halo=sp;
+    }
+    return group;
+  }).nodeThreeObjectExtend(false)
+  .nodeLabel(function(n){
+    var d=DOMAIN_MAP[n.color]||{label:'?',icon:'?'};
+    var p=n.betweenness>0.5?'FAST':n.betweenness>0.1?'mod':n.betweenness>0?'slow':'none';
+    return '<div style="background:#161b22ee;border:1px solid #30363d;border-radius:6px;padding:6px 10px;font:12px Segoe UI,sans-serif;color:#c9d1d9">'
+      +'<b style="color:'+n.color+'">'+d.icon+' '+n.id+'</b><br><span style="color:#8b949e">'+d.label+'</span><br>'
+      +'<span style="color:#58a6ff">deg:'+n.degree+'</span> <span style="color:#ff9100">bridge:'+(n.betweenness*100).toFixed(1)+'%</span></div>';
+  })
+  .linkCurvature(function(lk){return lk.bidir?0.15:0;})
+  .linkCurveRotation(function(lk){return lk.bidir?Math.PI*0.5:0;})
+  .linkColor(function(lk){
+    if(egoNode){var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+      if(s!==egoNode.id&&t!==egoNode.id&&!adj2[egoNode.id].has(s)&&!adj2[egoNode.id].has(t)) return 'rgba(0,0,0,0)';}
+    if(hoverNode){var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+      return(s===hoverNode.id||t===hoverNode.id)?'rgba(88,166,255,0.6)':'rgba(30,30,30,0.02)';}
+    var r=lk.eRec||0;var a=0.02+r*0.25;var b=Math.round(40+r*100);
+    return 'rgba('+b+','+b+',255,'+a.toFixed(2)+')';
+  })
+  .linkWidth(function(lk){
+    if(hoverNode){var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+      if(s===hoverNode.id||t===hoverNode.id) return lk.bidir?1.8:0.8; return 0.05;}
+    var r=lk.eRec||0;return(lk.bidir?0.15:0.08)+r*0.5;
+  }).linkOpacity(0.6)
+  .linkDirectionalParticles(function(lk){
+    if(!hoverNode) return 1;
+    var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+    if(s===hoverNode.id||t===hoverNode.id) return lk.bidir?6:2; return 1;
+  })
+  .linkDirectionalParticleSpeed(function(lk){
+    if(!hoverNode) return 0.0005+(lk.eRec||0)*0.003;
+    var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+    if(s===hoverNode.id||t===hoverNode.id) return 0.001+(lk.tRec||0)*0.008;
+    return 0.0005+(lk.eRec||0)*0.003;
+  })
+  .linkDirectionalParticleColor(function(lk){
+    if(!hoverNode){var er=lk.eRec||0;return 'rgba(88,166,255,'+(0.05+er*0.35).toFixed(2)+')';}
+    var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+    if(s===hoverNode.id||t===hoverNode.id) return lk.tColor||'#58a6ff';
+    return 'rgba(88,166,255,'+(0.05+(lk.eRec||0)*0.35).toFixed(2)+')';
+  })
+  .linkDirectionalParticleWidth(function(lk){
+    if(!hoverNode) return 0.3;
+    var s=typeof lk.source==='object'?lk.source.id:lk.source;var t=typeof lk.target==='object'?lk.target.id:lk.target;
+    if(s===hoverNode.id||t===hoverNode.id) return lk.bidir?1.5:0.6; return 0.3;
+  })
+  .linkDirectionalArrowLength(function(lk){return lk.bidir?0:2;}).linkDirectionalArrowRelPos(1)
+  .onNodeHover(function(node){
+    el.style.cursor=node?'pointer':'default'; hoverNode=node||null; highlightNodes={};
+    if(node){(adj[node.id]||[]).forEach(function(id){highlightNodes[id]=true;});}
+    refreshLinks();
+  })
+  .onNodeClick(function(node){
+    if(!node) return; showNodeInfo(node.id);
+    var d=160,r=1+d/Math.hypot(node.x||1,node.y||1,node.z||1);
+    Graph.cameraPosition({x:node.x*r,y:node.y*r,z:node.z*r},node,1000);
+  })
+  .d3AlphaDecay(0.02).d3VelocityDecay(0.3).warmupTicks(100).cooldownTicks(300).cooldownTime(8000);
+
+function refreshLinks(){Graph.linkColor(Graph.linkColor()).linkWidth(Graph.linkWidth()).linkDirectionalParticles(Graph.linkDirectionalParticles()).linkDirectionalParticleWidth(Graph.linkDirectionalParticleWidth());}
+function refreshAll(){Graph.nodeThreeObject(Graph.nodeThreeObject()).nodeVal(Graph.nodeVal());refreshLinks();}
+
+// ── FORCES ──
+Graph.d3Force('charge').strength(-40).distanceMax(300);
+Graph.d3Force('link').distance(30).strength(0.3);
+Graph.d3Force('center').strength(0.1);
+Graph.d3Force('collide',function(alpha){var pad=2;for(var i=0;i<graphNodes.length;i++)for(var j=i+1;j<graphNodes.length;j++){var a=graphNodes[i],b=graphNodes[j];var dx=(a.x||0)-(b.x||0),dy=(a.y||0)-(b.y||0),dz=(a.z||0)-(b.z||0);var dist=Math.sqrt(dx*dx+dy*dy+dz*dz)||1;var rA=Math.max(3,Math.sqrt(a.degree)*0.8)+pad,rB=Math.max(3,Math.sqrt(b.degree)*0.8)+pad;var mn=rA+rB;if(dist<mn){var p=(mn-dist)/dist*0.3*alpha;a.vx+=dx*p;a.vy+=dy*p;a.vz+=dz*p;b.vx-=dx*p;b.vy-=dy*p;b.vz-=dz*p;}}});
+Graph.d3Force('pull',function(alpha){graphNodes.forEach(function(n){var s=n.degree<=1?0.15:0.01;n.vx-=(n.x||0)*s*alpha;n.vy-=(n.y||0)*s*alpha;n.vz-=(n.z||0)*s*alpha;});});
+Graph.d3Force('attract',function(alpha){graphNodes.forEach(function(n){var att=ATTRACTORS[n.color];if(!att)return;var str=attractorStrength*alpha;n.vx+=(att.x-(n.x||0))*str;n.vy+=(att.y-(n.y||0))*str;n.vz+=(att.z-(n.z||0))*str;});});
+Graph.d3Force('inertia',function(alpha){graphNodes.forEach(function(n){var mass=Math.min(0.95,0.7+0.25/(1+n.degree*0.02));n.vx*=mass;n.vy*=mass;n.vz*=mass;});});
+
+// ── FORCE SLIDERS ──
+document.getElementById('s-repel').oninput=function(e){var v=parseInt(e.target.value);document.getElementById('v-repel').textContent=v;Graph.d3Force('charge').strength(v);Graph.d3ReheatSimulation();};
+document.getElementById('s-linkd').oninput=function(e){var v=parseInt(e.target.value);document.getElementById('v-linkd').textContent=v;Graph.d3Force('link').distance(v);Graph.d3ReheatSimulation();};
+document.getElementById('s-links').oninput=function(e){var v=parseInt(e.target.value)/100;document.getElementById('v-links').textContent=v.toFixed(2);Graph.d3Force('link').strength(v);Graph.d3ReheatSimulation();};
+document.getElementById('s-center').oninput=function(e){var v=parseInt(e.target.value)/100;document.getElementById('v-center').textContent=v.toFixed(2);Graph.d3Force('center').strength(v);Graph.d3ReheatSimulation();};
+document.getElementById('s-attract').oninput=function(e){attractorStrength=parseInt(e.target.value)/1000;document.getElementById('v-attract').textContent=attractorStrength.toFixed(3);Graph.d3ReheatSimulation();};
+document.getElementById('s-gain').oninput=function(e){pulseGain=parseInt(e.target.value)/100;document.getElementById('v-gain').textContent=pulseGain.toFixed(2);};
+document.getElementById('s-speed').oninput=function(e){pulseSpeed=parseInt(e.target.value)/100;document.getElementById('v-speed').textContent=pulseSpeed.toFixed(1)+'x';};
+document.getElementById('btn-reheat').onclick=function(){Graph.d3ReheatSimulation();setTimeout(function(){buildClusterShells();},3000);refreshAll();};
+
+// ── ZOOM ──
+Graph.controls().enableZoom=false;
+el.addEventListener('wheel',function(e){e.preventDefault();doZoom(e.deltaY>0?1.15:0.87);},{passive:false});
+function doZoom(f){startIdleTimer();var cam=Graph.camera(),p=cam.position;var d=Math.sqrt(p.x*p.x+p.y*p.y+p.z*p.z);var nd=Math.max(50,Math.min(2000,d*f));var s=nd/d;cam.position.set(p.x*s,p.y*s,p.z*s);}
+document.getElementById('zoom-in').onclick=function(){doZoom(0.7);};
+document.getElementById('zoom-out').onclick=function(){doZoom(1.4);};
+document.getElementById('zoom-reset').onclick=function(){startIdleTimer();Graph.cameraPosition({x:0,y:0,z:600},{x:0,y:0,z:0},1000);};
+
+// ── EGO MODE ──
+el.addEventListener('dblclick',function(){
+  if(egoNode){egoNode=null;document.getElementById('ego-badge').style.display='none';}
+  else if(hoverNode){egoNode=hoverNode;document.getElementById('ego-badge').style.display='block';}
+  refreshAll();
+});
+
+// ── DAG TOGGLE ──
+var dagModes=[null,'td','bu','lr','rl','radialout'],dagIdx=0;
+document.getElementById('btn-dag').onclick=function(){dagIdx=(dagIdx+1)%dagModes.length;dagMode=dagModes[dagIdx];Graph.dagMode(dagMode);this.classList.toggle('active-toggle',dagMode!==null);Graph.d3ReheatSimulation();};
+
+// ── HEATMAP TOGGLE ──
+document.getElementById('btn-heatmap').onclick=function(){heatmapMode=!heatmapMode;this.classList.toggle('active-toggle',heatmapMode);refreshAll();};
+
+// ── SCREENSHOT ──
+document.getElementById('btn-screenshot').onclick=function(){var r=Graph.renderer();r.render(Graph.scene(),Graph.camera());var u=r.domElement.toDataURL('image/png');var a=document.createElement('a');a.href=u;a.download='nerve_graph_'+new Date().toISOString().slice(0,10)+'.png';a.click();};
+
+// ── CLUSTER SHELLS ──
+var clusterShells={};
+function buildClusterShells(){
+  Object.values(clusterShells).forEach(function(m){Graph.scene().remove(m);});
+  clusterShells={};
+  var groups={};
+  graphNodes.forEach(function(n){if(!groups[n.color])groups[n.color]=[];groups[n.color].push(n);});
+  Object.keys(groups).forEach(function(color){
+    var nodes=groups[color];if(nodes.length<3)return;
+    var cx=0,cy=0,cz=0;
+    nodes.forEach(function(n){cx+=(n.x||0);cy+=(n.y||0);cz+=(n.z||0);});
+    cx/=nodes.length;cy/=nodes.length;cz/=nodes.length;
+    var maxR=0;
+    nodes.forEach(function(n){var dx=(n.x||0)-cx,dy=(n.y||0)-cy,dz=(n.z||0)-cz;var d=Math.sqrt(dx*dx+dy*dy+dz*dz);if(d>maxR)maxR=d;});
+    maxR=Math.max(maxR+10,20);
+    var geo=new THREE.SphereGeometry(maxR,16,12);
+    var mat=new THREE.MeshBasicMaterial({color:new THREE.Color(color),transparent:true,opacity:0.08,wireframe:true,depthWrite:false});
+    var mesh=new THREE.Mesh(geo,mat);mesh.position.set(cx,cy,cz);
+    clusterShells[color]=mesh;
+    if(shellsVisible) Graph.scene().add(mesh);
+  });
+}
+setTimeout(function(){buildClusterShells();},3000);
+Graph.onEngineStop(function(){buildClusterShells();});
+document.getElementById('btn-shells').onclick=function(){
+  shellsVisible=!shellsVisible;this.classList.toggle('active-toggle',shellsVisible);
+  Object.values(clusterShells).forEach(function(m){if(shellsVisible)Graph.scene().add(m);else Graph.scene().remove(m);});
+};
+
+// ── KEYBOARD: 1-9 jump to top hubs ──
+var topHubsSorted=graphNodes.slice().sort(function(a,b){return b.degree-a.degree;}).slice(0,9);
+document.addEventListener('keydown',function(e){
+  var idx=parseInt(e.key)-1;
+  if(idx>=0&&idx<9&&topHubsSorted[idx]&&!e.ctrlKey&&!e.altKey){
+    var n=topHubsSorted[idx];var d=160,r=1+d/Math.hypot(n.x||1,n.y||1,n.z||1);
+    Graph.cameraPosition({x:n.x*r,y:n.y*r,z:n.z*r},n,1000);showNodeInfo(n.id);
+  }
+});
+
+// ── ANIMATION LOOP: PULSE + ROTATION ──
+var isIdle=true,idleTimeout=null,rotAngle=0,wasIdle=true;
+function startIdleTimer(){isIdle=false;clearTimeout(idleTimeout);idleTimeout=setTimeout(function(){isIdle=true;},5000);}
+el.addEventListener('mousedown',startIdleTimer);el.addEventListener('touchstart',startIdleTimer);el.addEventListener('wheel',startIdleTimer);
+
+(function animate(){
+  requestAnimationFrame(animate);
+  var t=performance.now()*0.001;
+  // PULSE (suppressed during hover)
+  graphNodes.forEach(function(n){
+    if(!n.__mesh||!n.__mesh.material) return;
+    var dimmed=!isActive(n.color)||(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id));
+    if(dimmed){n.__mesh.material.emissiveIntensity=0;if(n.__halo)n.__halo.material.opacity=0;return;}
+    if(hoverNode){n.__mesh.material.emissiveIntensity=0;if(n.__halo)n.__halo.material.opacity=0;return;}
+    var bet=n.betweenness;
+    if(bet>0.95){n.__mesh.material.emissiveIntensity=0.12;if(n.__halo)n.__halo.material.opacity=0.08;}
+    else if(bet>0.001){
+      var tn=Math.min(1.0,(bet-0.001)/(0.95-0.001));
+      var boosted=Math.min(1.0,tn+pulseGain);
+      var freq=(0.4+boosted*1.2)*pulseSpeed;
+      var amp=0.4+boosted*1.1;
+      var wave=Math.sin(t*freq*Math.PI*2);
+      var baseline=0.1+boosted*0.3;
+      n.__mesh.material.emissiveIntensity=baseline+amp*(wave*0.5+0.5);
+      if(n.__halo)n.__halo.material.opacity=0.05+0.2*(wave*0.5+0.5)*boosted;
+    } else {n.__mesh.material.emissiveIntensity=0.03;if(n.__halo)n.__halo.material.opacity=0;}
+  });
+  // ROTATION
+  if(!isIdle){wasIdle=false;return;}
+  var cam=Graph.camera(),p=cam.position,dist=Math.sqrt(p.x*p.x+p.z*p.z);
+  if(!wasIdle){rotAngle=Math.atan2(p.x,p.z);wasIdle=true;}
+  rotAngle+=0.0005;
+  cam.position.x=dist*Math.sin(rotAngle);cam.position.z=dist*Math.cos(rotAngle);
+  cam.lookAt(Graph.scene().position);
+})();
+
+// ── NODE INFO ──
+function showNodeInfo(id){
+  var n=nodeMap[id];if(!n)return;
+  var d=DOMAIN_MAP[n.color]||{label:'?',icon:'?'};
+  var p=n.betweenness>0.5?'FAST':n.betweenness>0.1?'mod':n.betweenness>0?'slow':'none';
+  var r=n.recency>0.9?'today':n.recency>0.7?'this week':n.recency>0.3?'recent':'stale';
+  document.getElementById('info-name').textContent=d.icon+' '+id;
+  document.getElementById('info-meta').innerHTML=d.label+'<br>Connections: '+n.degree+' | Bridge: '+(n.betweenness*100).toFixed(1)+'% | Pulse: '+p+' | Freshness: '+r;
+  document.getElementById('node-info').style.display='block';
+}
+
+// ── SIDEBAR HOVER ──
+function sidebarHover(node){hoverNode=node||null;highlightNodes={};if(node){(adj[node.id]||[]).forEach(function(id){highlightNodes[id]=true;});}refreshLinks();}
+function wireSidebarItem(el,node){el.addEventListener('mouseenter',function(){sidebarHover(node);});el.addEventListener('mouseleave',function(){sidebarHover(null);});}
+
+// ── SIDEBAR: DOMAIN FILTERS ──
+var colorCounts={};graphNodes.forEach(function(n){colorCounts[n.color]=(colorCounts[n.color]||0)+1;});
+var fp=document.getElementById('panel-filters');
+Object.keys(DOMAIN_MAP).sort(function(a,b){return(colorCounts[b]||0)-(colorCounts[a]||0);}).forEach(function(c){
+  var info=DOMAIN_MAP[c];var d=document.createElement('div');d.className='filter-item';
+  d.innerHTML='<span class="filter-dot" style="background:'+c+'"></span><span style="flex:1">'+info.icon+' '+info.label+'</span><span class="filter-count">'+(colorCounts[c]||0)+'</span>';
+  d.onclick=function(){if(isActive(c)){delete activeColors[c];d.classList.add('disabled');}else{activeColors[c]=true;d.classList.remove('disabled');}refreshAll();};
+  fp.appendChild(d);
+});
+
+// ── SIDEBAR: HUBS ──
+var hp=document.getElementById('panel-hubs');
+var topHubs=graphNodes.slice().sort(function(a,b){return b.degree-a.degree;}).slice(0,30);
+topHubs.forEach(function(n){
+  var d=document.createElement('div');d.className='node-item';
+  d.innerHTML='<span><span class="filter-dot" style="background:'+n.color+';display:inline-block;width:8px;height:8px;vertical-align:middle;margin-right:5px"></span>'+n.id+'</span><span class="metric">deg:'+n.degree+' bet:'+Math.round(n.betweenness*20)+'</span>';
+  d.onclick=function(){focusNode(n.id);};wireSidebarItem(d,n);hp.appendChild(d);
+});
+
+// ── SIDEBAR: ORPHANS ──
+var op=document.getElementById('panel-orphans');
+var orphans=graphNodes.filter(function(n){return n.degree<=1;}).sort(function(a,b){return a.degree-b.degree;});
+var hdr=document.createElement('div');hdr.style.cssText='color:#f85149;font-size:12px;padding:4px 0 8px';
+hdr.textContent=orphans.length+' notes with 0-1 connections';op.appendChild(hdr);
+orphans.forEach(function(n){
+  var d=document.createElement('div');d.className='node-item';
+  d.innerHTML='<span><span class="filter-dot" style="background:'+n.color+';display:inline-block;width:8px;height:8px;vertical-align:middle;margin-right:5px"></span>'+n.id+'</span><span class="metric">'+(n.degree===0?'ISLAND':'deg:1')+'</span>';
+  d.onclick=function(){focusNode(n.id);};wireSidebarItem(d,n);op.appendChild(d);
+});
+
+// ── TABS ──
+document.querySelectorAll('.tab').forEach(function(tab){
+  tab.addEventListener('click',function(){
+    document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+    document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});
+    tab.classList.add('active');document.getElementById('panel-'+tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── SEARCH ──
+var si=document.getElementById('search-input'),sr=document.getElementById('search-results');
+si.addEventListener('input',function(){
+  var q=si.value.toLowerCase().trim();sr.innerHTML='';if(q.length<2)return;
+  graphNodes.filter(function(n){return n.id.toLowerCase().indexOf(q)>=0;}).slice(0,12).forEach(function(n){
+    var d=document.createElement('div');d.className='search-result';
+    var dm=DOMAIN_MAP[n.color]||{icon:'?'};
+    d.innerHTML=dm.icon+' '+n.id+' <span style="color:#484f58">deg:'+n.degree+'</span>';
+    d.onclick=function(){focusNode(n.id);si.value=n.id;sr.innerHTML='';};
+    wireSidebarItem(d,n);sr.appendChild(d);
+  });
+});
+
+// ── FOCUS NODE ──
+function focusNode(id){
+  var n=graphNodes.find(function(x){return x.id===id;});if(!n)return;
+  var d=160,r=1+d/Math.hypot(n.x||1,n.y||1,n.z||1);
+  Graph.cameraPosition({x:(n.x||0)*r,y:(n.y||0)*r,z:(n.z||0)*r},n,1000);
+  showNodeInfo(id);
+}
+
+// ── STATS ──
+var statsEl=document.getElementById('stats');
+var bidir=graphLinks.filter(function(l){return l.bidir;}).length;
+var avgDeg=(graphNodes.reduce(function(s,n){return s+n.degree;},0)/graphNodes.length).toFixed(1);
+var bridges=graphNodes.filter(function(n){return n.betweenness>0.1;}).length;
+statsEl.innerHTML='Avg degree: '+avgDeg+' | Bridges: '+bridges+'<br>Bidir: '+bidir+' | One-way: '+(graphLinks.length-bidir)+'<br>Orphans: '+orphans.length+'<br>Keys 1-9: jump to hubs | Dbl-click: ego mode';
+
+</script>
+</body>
+</html>
