@@ -1,6 +1,6 @@
 {
-    "vault_path": ".",
-    "vault_name": "MyVault",
+    "vault_path": "sample-vault",
+    "vault_name": "Sample Vault",
     "output": "vault_data.js",
     "skip_dirs": [".obsidian", ".git", "node_modules", ".trash", ".logseq"],
     "root_exponent": 0.2,

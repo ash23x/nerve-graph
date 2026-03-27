@@ -26,28 +26,37 @@ Five independent visual channels, each encoding different data — no two channe
 
 ## Quick Start
 
+### See it immediately (zero config)
+
+A sample vault is included. Clone and open — that's it:
+
 ```bash
-# 1. Install dependencies
-pip install networkx pyyaml
-
-# 2. Clone and configure
 git clone https://github.com/ash23x/nerve-graph.git
-cd nerve-graph
+```
 
-# 3. Edit config.json — point vault_path at your markdown folder
+Open `nerve_graph.html` in your browser. Done. 30 nodes, 7 domains, working graph.
+
+### Point it at your own vault
+
+```bash
+pip install networkx pyyaml
+```
+
+Edit `config.json`:
+```json
 {
     "vault_path": "/path/to/your/vault",
     "vault_name": "MyVault"
 }
-
-# 4. Build the data
-python build_vault_data.py
-
-# 5. Open in browser
-# Just open nerve_graph.html — no server needed
 ```
 
-That's it. Three commands from clone to visualisation.
+Build and open:
+```bash
+python build_vault_data.py
+# Open nerve_graph.html in your browser
+```
+
+Three commands from clone to visualisation. No server needed.
 
 ## Features
 
