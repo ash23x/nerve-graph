@@ -8,12 +8,12 @@
     "custom_domains": {},
     "category_rules": {
         "metal": {
-            "name_patterns": ["CLAUDE", "FILTERED", "FILTERED*", "*FILTERED*", "FILTERED", "FILTERED", "FILTERED", "FILTERED"],
-            "dir_patterns": ["FILTERED", "FILTERED"]
+            "name_patterns": [],
+            "dir_patterns": []
         },
         "hybrid": {
             "name_patterns": [],
-            "dir_patterns": ["WTC7", "VectorShield"]
+            "dir_patterns": []
         }
     }
 }

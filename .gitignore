@@ -3,3 +3,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 vault_data.js
+config.local.json
+*.key
+*.pem
+.env

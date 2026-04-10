@@ -31,6 +31,16 @@ except ImportError:
 # ── CONFIG ──
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPT_DIR, 'config.json')
+LOCAL_CONFIG_PATH = os.path.join(SCRIPT_DIR, 'config.local.json')
+
+def deep_merge(base, overlay):
+    """Recursively merge overlay dict into base dict."""
+    for k, v in overlay.items():
+        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+            deep_merge(base[k], v)
+        else:
+            base[k] = v
+    return base
 
 def load_config():
     defaults = {
@@ -40,12 +50,19 @@ def load_config():
         "skip_dirs": [".obsidian", ".git", "node_modules", ".trash"],
         "root_exponent": 0.2,
         "boost": 0.3,
-        "custom_domains": {}
+        "custom_domains": {},
+        "category_rules": {"metal": {"name_patterns": [], "dir_patterns": []}, "hybrid": {"name_patterns": [], "dir_patterns": []}}
     }
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
             user = json.load(f)
         defaults.update(user)
+    # Load local overrides (gitignored, never pushed)
+    if os.path.exists(LOCAL_CONFIG_PATH):
+        with open(LOCAL_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            local = json.load(f)
+        deep_merge(defaults, local)
+        print(f"  Loaded local config overrides from config.local.json")
     return defaults
 
 config = load_config()
