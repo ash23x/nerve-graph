@@ -12,7 +12,7 @@ Works with: Obsidian, Logseq, Dendron, Foam, Zettlr, or any folder of .md files.
 
 Dependencies: pip install networkx pyyaml
 """
-import os, re, json, sys, math, time
+import os, re, json, sys, math, time, fnmatch
 
 try:
     import networkx as nx
@@ -53,6 +53,21 @@ config = load_config()
 # CLI override
 if len(sys.argv) > 1:
     config['vault_path'] = sys.argv[1]
+
+# ── CATEGORY RULES (meat / metal / hybrid) ──
+CAT_RULES = config.get('category_rules', {})
+def classify_note(basename, relpath):
+    """Classify a note as meat (human), metal (claude), or hybrid (collaborative)."""
+    dirpart = os.path.dirname(relpath).replace('\\', '/').split('/')[0] if os.sep in relpath or '/' in relpath else ''
+    for cat in ('metal', 'hybrid'):
+        rules = CAT_RULES.get(cat, {})
+        for pat in rules.get('name_patterns', []):
+            if fnmatch.fnmatch(basename, pat) or fnmatch.fnmatch(basename, pat + '*'):
+                return cat
+        for dpat in rules.get('dir_patterns', []):
+            if dirpart and fnmatch.fnmatch(dirpart, dpat):
+                return cat
+    return 'meat'
 
 VAULT = os.path.abspath(config['vault_path'])
 OUTPUT = os.path.join(SCRIPT_DIR, config['output'])
@@ -128,7 +143,7 @@ for root, dirs, files in os.walk(VAULT):
         cluster = get_cluster(fm)
         cluster_set.add(cluster)
         G.add_node(basename)
-        note_meta[basename] = {'cluster': cluster, 'mtime': mtime, 'relpath': relpath}
+        note_meta[basename] = {'cluster': cluster, 'mtime': mtime, 'relpath': relpath, 'category': classify_note(basename, relpath)}
         note_basenames[basename.lower()] = basename
 
 print(f"  Pass 1: {G.number_of_nodes()} notes, {len(cluster_set)} clusters discovered")
@@ -206,6 +221,7 @@ for nid in G.nodes():
         'betweenness': norm_bet(bc.get(nid, 0)),
         'recency': recency(meta['mtime']),
         'cluster': meta['cluster'],
+        'category': meta.get('category', 'meat'),
     })
 
 edges_out = []
@@ -260,4 +276,11 @@ for cluster in sorted(cluster_style.keys()):
 print(f"\n  Top 10 hubs:")
 for name, deg in sorted(degree.items(), key=lambda x: -x[1])[:10]:
     print(f"    {name:50s}  deg={deg}")
+cat_counts = {'meat': 0, 'metal': 0, 'hybrid': 0}
+for n in nodes_out:
+    cat_counts[n['category']] = cat_counts.get(n['category'], 0) + 1
+print(f"\n  Category breakdown:")
+print(f"    [MEAT]   Human notes:     {cat_counts.get('meat',0):4d}")
+print(f"    [METAL]  Claude scaffold: {cat_counts.get('metal',0):4d}")
+print(f"    [HYBRID] Collaborative:   {cat_counts.get('hybrid',0):4d}")
 print(f"\n  Open nerve_graph.html in your browser to explore.")

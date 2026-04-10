@@ -16,6 +16,10 @@ body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',system-ui,sans-seri
 #search-box{padding:10px;border-bottom:1px solid #30363d}
 #search-input{width:100%;padding:7px 10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:13px;outline:none}
 #search-input:focus{border-color:#58a6ff}
+#category-bar{display:flex;gap:4px;padding:8px 10px;border-bottom:1px solid #30363d}
+.cat-btn{flex:1;padding:6px 4px;text-align:center;font-size:11px;cursor:pointer;border:1px solid #30363d;border-radius:5px;background:#0d1117;color:#8b949e;transition:all 0.15s}
+.cat-btn.active{border-color:#58a6ff;color:#c9d1d9;background:#58a6ff18}
+.cat-btn:hover{border-color:#484f58;color:#c9d1d9}
 #search-results{max-height:140px;overflow-y:auto}
 .search-result{padding:5px 10px;cursor:pointer;font-size:12px;color:#8b949e}
 .search-result:hover{background:#21262d;color:#c9d1d9}
@@ -58,6 +62,11 @@ body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',system-ui,sans-seri
   <div id="search-box">
     <input type="text" id="search-input" placeholder="Search notes..." autocomplete="off">
     <div id="search-results"></div>
+  </div>
+  <div id="category-bar">
+    <button class="cat-btn active" data-cat="meat" title="Human notes">🥩 Meat</button>
+    <button class="cat-btn" data-cat="hybrid" title="Collaborative">🤝 Hybrid</button>
+    <button class="cat-btn" data-cat="metal" title="Claude scaffolding">⚙️ Metal</button>
   </div>
   <div id="tab-bar">
     <div class="tab active" data-tab="filters">Domains</div>
@@ -108,7 +117,8 @@ body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',system-ui,sans-seri
     &#8596; Particle density = mutual link (hover)<br>
     &#9632; Particle colour = target domain (hover)<br>
     &#9211; Curved = bidirectional link<br>
-    <b>Keys:</b> 1-9 = jump to hub | dbl-click = ego
+    <b>Keys:</b> 1-9 = jump to hub | dbl-click = ego<br>
+    <b>Categories:</b> 🥩 Meat | ⚙️ Metal | 🤝 Hybrid
   </div>
 </div>
 <script>
@@ -147,7 +157,8 @@ var hoverNode = null, highlightNodes = {};
 var egoNode = null, heatmapMode = false, dagMode = null, shellsVisible = false;
 var activeColors = {};
 Object.keys(DOMAIN_MAP).forEach(function(c){ activeColors[c] = true; });
-function isActive(c) { return activeColors[c] === true; }
+var activeCats = {meat:true, metal:false, hybrid:false};
+function isActive(c, cat) { return activeColors[c] === true && activeCats[cat || 'meat'] === true; }
 
 // ── COUNTER ──
 document.getElementById('node-count').textContent = VAULT_NODES.length + ' nodes \u00b7 ' + VAULT_EDGES.length + ' edges';
@@ -155,7 +166,7 @@ document.getElementById('node-count').textContent = VAULT_NODES.length + ' nodes
 // ── DATA PARSING ──
 var graphNodes = VAULT_NODES.map(function(n) {
   return { id:n.id, color:n.color, shape:n.shape, degree:n.degree, betweenness:n.betweenness,
-    recency:n.recency, val:Math.max(0.8, Math.sqrt(n.degree)*1.5), __mesh:null, __halo:null };
+    recency:n.recency, category:n.category||'meat', val:Math.max(0.8, Math.sqrt(n.degree)*1.5), __mesh:null, __halo:null };
 });
 var nodeMap = {}; graphNodes.forEach(function(n){ nodeMap[n.id]=n; });
 var idSet = {}; graphNodes.forEach(function(n){ idSet[n.id]=true; });
@@ -190,12 +201,12 @@ var Graph = ForceGraph3D({extraRenderers:[],rendererConfig:{antialias:true,alpha
   .backgroundColor('#0d1117').showNavInfo(false)
   .nodeVal(function(n){
     if(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id)) return 0.01;
-    return isActive(n.color)?n.val:0.01;
+    return isActive(n.color,n.category)?n.val:0.01;
   })
   .nodeThreeObject(function(n) {
     var d=DOMAIN_MAP[n.color]||{shape:'sphere'}; var size=Math.max(2,Math.sqrt(n.degree)*1.5);
     var nc=heatmapMode?recencyColor(n.recency):n.color;
-    var dimmed=(!isActive(n.color))||(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id));
+    var dimmed=(!isActive(n.color,n.category))||(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id));
     if(dimmed) nc='#111111'; else if(hoverNode&&n!==hoverNode&&!highlightNodes[n.id]) nc='#282828';
     var mat=new THREE.MeshStandardMaterial({color:nc,emissive:new THREE.Color(nc),emissiveIntensity:0,
       metalness:0.1,roughness:0.7,transparent:true,opacity:dimmed?0.06:0.92});
@@ -215,8 +226,9 @@ var Graph = ForceGraph3D({extraRenderers:[],rendererConfig:{antialias:true,alpha
   .nodeLabel(function(n){
     var d=DOMAIN_MAP[n.color]||{label:'?',icon:'?'};
     var p=n.betweenness>0.5?'FAST':n.betweenness>0.1?'mod':n.betweenness>0?'slow':'none';
+    var catIcon=n.category==='metal'?'⚙️':n.category==='hybrid'?'🤝':'🥩';
     return '<div style="background:#161b22ee;border:1px solid #30363d;border-radius:6px;padding:6px 10px;font:12px Segoe UI,sans-serif;color:#c9d1d9">'
-      +'<b style="color:'+n.color+'">'+d.icon+' '+n.id+'</b><br><span style="color:#8b949e">'+d.label+'</span><br>'
+      +'<b style="color:'+n.color+'">'+d.icon+' '+n.id+'</b> '+catIcon+'<br><span style="color:#8b949e">'+d.label+'</span><br>'
       +'<span style="color:#58a6ff">deg:'+n.degree+'</span> <span style="color:#ff9100">bridge:'+(n.betweenness*100).toFixed(1)+'%</span></div>';
   })
   .linkCurvature(function(lk){return lk.bidir?0.15:0;})
@@ -366,7 +378,7 @@ el.addEventListener('mousedown',startIdleTimer);el.addEventListener('touchstart'
   // PULSE (suppressed during hover)
   graphNodes.forEach(function(n){
     if(!n.__mesh||!n.__mesh.material) return;
-    var dimmed=!isActive(n.color)||(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id));
+    var dimmed=!isActive(n.color,n.category)||(egoNode&&n.id!==egoNode.id&&!adj2[egoNode.id].has(n.id));
     if(dimmed){n.__mesh.material.emissiveIntensity=0;if(n.__halo)n.__halo.material.opacity=0;return;}
     if(hoverNode){n.__mesh.material.emissiveIntensity=0;if(n.__halo)n.__halo.material.opacity=0;return;}
     var bet=n.betweenness;
@@ -397,8 +409,9 @@ function showNodeInfo(id){
   var d=DOMAIN_MAP[n.color]||{label:'?',icon:'?'};
   var p=n.betweenness>0.5?'FAST':n.betweenness>0.1?'mod':n.betweenness>0?'slow':'none';
   var r=n.recency>0.9?'today':n.recency>0.7?'this week':n.recency>0.3?'recent':'stale';
+  var catLabel=n.category==='metal'?'⚙️ Metal':n.category==='hybrid'?'🤝 Hybrid':'🥩 Meat';
   document.getElementById('info-name').textContent=d.icon+' '+id;
-  document.getElementById('info-meta').innerHTML=d.label+'<br>Connections: '+n.degree+' | Bridge: '+(n.betweenness*100).toFixed(1)+'% | Pulse: '+p+' | Freshness: '+r;
+  document.getElementById('info-meta').innerHTML=d.label+' | '+catLabel+'<br>Connections: '+n.degree+' | Bridge: '+(n.betweenness*100).toFixed(1)+'% | Pulse: '+p+' | Freshness: '+r;
   document.getElementById('node-info').style.display='block';
 }
 
@@ -415,6 +428,21 @@ Object.keys(DOMAIN_MAP).sort(function(a,b){return(colorCounts[b]||0)-(colorCount
   d.onclick=function(){if(isActive(c)){delete activeColors[c];d.classList.add('disabled');}else{activeColors[c]=true;d.classList.remove('disabled');}refreshAll();};
   fp.appendChild(d);
 });
+
+// ── CATEGORY TOGGLE (meat / metal / hybrid) ──
+document.querySelectorAll('.cat-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var cat=btn.dataset.cat;
+    activeCats[cat]=!activeCats[cat];
+    btn.classList.toggle('active',activeCats[cat]);
+    var visCount=graphNodes.filter(function(n){return activeCats[n.category]&&activeColors[n.color];}).length;
+    document.getElementById('node-count').textContent=visCount+' / '+VAULT_NODES.length+' nodes';
+    refreshAll();
+  });
+});
+// Init count for default (meat only)
+(function(){var c=graphNodes.filter(function(n){return activeCats[n.category];}).length;
+document.getElementById('node-count').textContent=c+' / '+VAULT_NODES.length+' nodes';})();
 
 // ── SIDEBAR: HUBS ──
 var hp=document.getElementById('panel-hubs');
@@ -472,6 +500,7 @@ var bidir=graphLinks.filter(function(l){return l.bidir;}).length;
 var avgDeg=(graphNodes.reduce(function(s,n){return s+n.degree;},0)/graphNodes.length).toFixed(1);
 var bridges=graphNodes.filter(function(n){return n.betweenness>0.1;}).length;
 statsEl.innerHTML='Avg degree: '+avgDeg+' | Bridges: '+bridges+'<br>Bidir: '+bidir+' | One-way: '+(graphLinks.length-bidir)+'<br>Orphans: '+orphans.length+'<br>Keys 1-9: jump to hubs | Dbl-click: ego mode';
+
 
 </script>
 </body>
